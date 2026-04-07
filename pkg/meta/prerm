@@ -1,0 +1,8 @@
+#!/bin/bash
+# prerm — BlueyOS login-tools pre-removal script
+set -e
+
+# Remove faillock state (runtime data, not persistent)
+rm -rf /var/run/faillock
+
+echo "login-tools: pre-removal complete."

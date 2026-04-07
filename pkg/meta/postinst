@@ -1,0 +1,38 @@
+#!/bin/bash
+# postinst — BlueyOS login-tools post-installation script
+set -e
+
+# Set setuid root on tools that need privilege escalation
+for bin in passwd login chsh; do
+    if [ -f "/usr/bin/$bin" ]; then
+        chmod u+s "/usr/bin/$bin"
+    fi
+done
+
+# Create faillock state directory (root-owned, not world-readable)
+mkdir -p /var/run/faillock
+chmod 0750 /var/run/faillock
+chown root:root /var/run/faillock
+
+# Create password history file if absent
+if [ ! -f /etc/security/opasswd ]; then
+    touch /etc/security/opasswd
+    chmod 0600 /etc/security/opasswd
+    chown root:root /etc/security/opasswd
+fi
+
+# Create /etc/shadow with correct permissions if it doesn't exist
+if [ ! -f /etc/shadow ]; then
+    touch /etc/shadow
+    chmod 0640 /etc/shadow
+    # Try to chown to shadow group; fall back to root:root
+    chown root:shadow /etc/shadow 2>/dev/null || chown root:root /etc/shadow
+fi
+
+# Install default policy config only if none exists
+if [ ! -f /etc/security/pwpolicy.conf ]; then
+    install -m 0644 /etc/security/pwpolicy.conf.default \
+                    /etc/security/pwpolicy.conf 2>/dev/null || true
+fi
+
+echo "login-tools: installation complete."

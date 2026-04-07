@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blueyos-login-tools"
+version = "0.1.0"
+description = "Login and password management tools for BlueyOS"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+passwd      = "login_tools.cli.passwd:main"
+login       = "login_tools.cli.login_:main"
+setup-root  = "login_tools.cli.setup_root:main"
+useradd     = "login_tools.cli.useradd:main"
+userdel     = "login_tools.cli.userdel:main"
+usermod     = "login_tools.cli.usermod:main"
+groupadd    = "login_tools.cli.groupadd:main"
+groupdel    = "login_tools.cli.groupdel:main"
+groupmod    = "login_tools.cli.groupmod:main"
+chsh        = "login_tools.cli.chsh:main"
+userlock    = "login_tools.cli.userlock:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
