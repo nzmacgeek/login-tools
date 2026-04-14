@@ -238,39 +238,40 @@ static int do_chmod(const char *path, const char *mode_str)
     return 0;
 }
 
-static int chmod_tree(const char *path, const char *mode_str);
-
-static int descend_dir(const char *path, const char *mode_str)
-{
-    DIR *d = opendir(path);
-    if (!d) {
-        fprintf(stderr, "chmod: cannot open directory '%s': %s\n",
-                path, strerror(errno));
-        return 1;
-    }
-    int rc = 0;
-    struct dirent *de;
-    while ((de = readdir(d)) != NULL) {
-        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
-            continue;
-        char child[4096];
-        snprintf(child, sizeof(child), "%s/%s", path, de->d_name);
-        rc |= chmod_tree(child, mode_str);
-    }
-    closedir(d);
-    return rc;
-}
-
 static int chmod_tree(const char *path, const char *mode_str)
 {
-    struct stat st;
-    if (lstat(path, &st) != 0) {
-        fprintf(stderr, "chmod: cannot stat '%s': %s\n", path, strerror(errno));
-        return 1;
-    }
     int rc = do_chmod(path, mode_str);
-    if (S_ISDIR(st.st_mode))
-        rc |= descend_dir(path, mode_str);
+
+    /* Open the path with O_NOFOLLOW so we never follow a trailing symlink.
+     * We then use fstat + fdopendir on the same fd, eliminating the TOCTOU
+     * window between the lstat "is it a directory?" check and opendir. */
+    int dfd = open(path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW);
+    if (dfd < 0)
+        return rc; /* not a dir, or no read perm — nothing to descend */
+
+    struct stat st;
+    if (fstat(dfd, &st) == 0 && S_ISDIR(st.st_mode)) {
+        DIR *d = fdopendir(dfd);
+        if (!d) {
+            fprintf(stderr, "chmod: cannot open directory '%s': %s\n",
+                    path, strerror(errno));
+            close(dfd);
+            return 1;
+        }
+        /* dfd is now owned by d; do not close it separately */
+        struct dirent *de;
+        while ((de = readdir(d)) != NULL) {
+            if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+                continue;
+            char child[4096];
+            snprintf(child, sizeof(child), "%s/%s", path, de->d_name);
+            rc |= chmod_tree(child, mode_str);
+        }
+        closedir(d);
+    } else {
+        close(dfd);
+    }
+
     return rc;
 }
 
