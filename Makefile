@@ -17,7 +17,7 @@ LIB_SRCS = \
 
 LIB_OBJS = $(LIB_SRCS:.c=.o)
 
-TOOLS_BIN  = passwd login chsh
+TOOLS_BIN  = passwd login chsh chmod chown chgrp
 TOOLS_SBIN = setup-root useradd userdel usermod \
              groupadd groupdel groupmod userlock
 

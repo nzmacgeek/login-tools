@@ -21,6 +21,9 @@ groupdel    = "login_tools.cli.groupdel:main"
 groupmod    = "login_tools.cli.groupmod:main"
 chsh        = "login_tools.cli.chsh:main"
 userlock    = "login_tools.cli.userlock:main"
+chmod       = "login_tools.cli.chmod:main"
+chown       = "login_tools.cli.chown:main"
+chgrp       = "login_tools.cli.chgrp:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
