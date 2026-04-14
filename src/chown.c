@@ -49,8 +49,13 @@ static int resolve_spec(const char *spec, uid_t *uid, gid_t *gid)
     /* Resolve owner */
     if (*owner_str) {
         char *end;
+        errno = 0;
         long v = strtol(owner_str, &end, 10);
         if (*end == '\0') {
+            if (errno == ERANGE || v < 0 || (long)(uid_t)v != v) {
+                fprintf(stderr, "chown: invalid user: '%s'\n", owner_str);
+                return 1;
+            }
             *uid = (uid_t)v;
         } else {
             struct passwd *pw = getpwnam(owner_str);
@@ -68,8 +73,13 @@ static int resolve_spec(const char *spec, uid_t *uid, gid_t *gid)
     /* Resolve group (if provided after ':') */
     if (group_str && *group_str) {
         char *end;
+        errno = 0;
         long v = strtol(group_str, &end, 10);
         if (*end == '\0') {
+            if (errno == ERANGE || v < 0 || (long)(gid_t)v != v) {
+                fprintf(stderr, "chown: invalid group: '%s'\n", group_str);
+                return 1;
+            }
             *gid = (gid_t)v;
         } else {
             struct group *gr = getgrnam(group_str);
@@ -79,6 +89,12 @@ static int resolve_spec(const char *spec, uid_t *uid, gid_t *gid)
             }
             *gid = gr->gr_gid;
         }
+    }
+
+    /* Reject bare ':' (no owner, no group) */
+    if (*uid == (uid_t)-1 && *gid == (gid_t)-1 && colon) {
+        fprintf(stderr, "chown: invalid spec: '%s'\n", spec);
+        return 1;
     }
 
     return 0;
@@ -162,8 +178,7 @@ static void usage(const char *prog)
 
 int main(int argc, char *argv[])
 {
-    if (getuid() != 0) {
-        fprintf(stderr, "chown: must be run as root.\n");
+    if (geteuid() != 0) {;
         exit(1);
     }
 

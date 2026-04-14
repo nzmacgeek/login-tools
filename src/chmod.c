@@ -38,21 +38,7 @@ static int who_mask(char c)
     }
 }
 
-/* Return the spread-across-all-slots bit pattern for a permission char,
- * or -1 if not a simple permission character (r/w/x/s/t). */
-static int perm_bits(char c)
-{
-    switch (c) {
-    case 'r': return 0444;
-    case 'w': return 0222;
-    case 'x': return 0111;
-    case 's': return (int)(S_ISUID | S_ISGID);
-    case 't': return (int)S_ISVTX;
-    default:  return -1;
-    }
-}
-
-/* Apply one symbolic clause (e.g. "u+x", "go-w", "a=rw") to *mode.
+/* Apply one symbolic clause (e.g. "u+x", "go-w", "a=rw", "u+s") to *mode.
  * Returns 0 on success, -1 on parse error. */
 static int apply_clause(mode_t *mode, const char *clause)
 {
@@ -70,12 +56,29 @@ static int apply_clause(mode_t *mode, const char *clause)
         return -1;
 
     char op = *p++;
+
+    /* Regular rwx bits spread across all three slots */
     int perms = 0;
+    /* Special bits (SUID, SGID, SVTX) collected separately — they are
+     * outside the 0777 mask and must be handled independently. */
+    int specials = 0;
 
     while (*p) {
-        int b = perm_bits(*p);
-        if (b >= 0) {
-            perms |= b;
+        if (*p == 'r') {
+            perms |= 0444;
+        } else if (*p == 'w') {
+            perms |= 0222;
+        } else if (*p == 'x') {
+            perms |= 0111;
+        } else if (*p == 'X') {
+            /* Conditional execute: set only if target is a directory
+             * or already has at least one execute bit set. */
+            if (S_ISDIR(*mode) || (*mode & 0111))
+                perms |= 0111;
+        } else if (*p == 's') {
+            specials |= (int)(S_ISUID | S_ISGID);
+        } else if (*p == 't') {
+            specials |= (int)S_ISVTX;
         } else {
             /* Reference: copy bits from u/g/o source */
             int src = who_mask(*p);
@@ -90,14 +93,26 @@ static int apply_clause(mode_t *mode, const char *clause)
         p++;
     }
 
-    /* X — execute/search only if directory or already executable */
-    /* (handled as a special clause prefix in parse_symbolic) */
+    /* Map 'who' slots to the corresponding special bits:
+     *   u (0700) → SUID,  g (0070) → SGID,  o (0007) → SVTX */
+    int special_who = 0;
+    if (who & 0700) special_who |= (int)S_ISUID;
+    if (who & 0070) special_who |= (int)S_ISGID;
+    if (who & 0007) special_who |= (int)S_ISVTX;
+    int special_masked = specials & special_who;
 
     int masked = perms & who;
     switch (op) {
-    case '+': *mode |=  (mode_t)masked; break;
-    case '-': *mode &= ~(mode_t)masked; break;
-    case '=': *mode  = (*mode & ~(mode_t)who) | (mode_t)masked; break;
+    case '+':
+        *mode |= (mode_t)masked | (mode_t)special_masked;
+        break;
+    case '-':
+        *mode &= ~((mode_t)masked | (mode_t)special_masked);
+        break;
+    case '=':
+        *mode = (*mode & ~((mode_t)who | (mode_t)special_who)) |
+                (mode_t)masked | (mode_t)special_masked;
+        break;
     }
     return 0;
 }
@@ -146,41 +161,72 @@ static int do_chmod(const char *path, const char *mode_str)
         return 0;
     }
 
-    /* For symbolic modes or verbose output, open the file and operate on the
-     * file descriptor so that fstat() and fchmod() reference the same inode,
-     * eliminating the TOCTOU window between the stat and the chmod. */
+    /* For symbolic modes or verbose output, prefer operating on a file
+     * descriptor so that fstat() and fchmod() reference the same inode,
+     * eliminating the TOCTOU window between the stat and the chmod.
+     *
+     * However, opening read-only can fail with EACCES even when the caller is
+     * still permitted to chmod the file (owner can chmod without read access).
+     * In that case, fall back to path-based stat()/chmod() to preserve
+     * standard chmod semantics. */
     int fd = open(path, O_RDONLY | O_NONBLOCK);
-    if (fd < 0) {
-        fprintf(stderr, "chmod: cannot open '%s': %s\n", path, strerror(errno));
-        return 1;
-    }
-
     struct stat st;
-    if (fstat(fd, &st) != 0) {
-        fprintf(stderr, "chmod: cannot stat '%s': %s\n", path, strerror(errno));
-        close(fd);
-        return 1;
-    }
+    mode_t old_mode;
+    mode_t new_mode;
 
-    mode_t old_mode = st.st_mode & 07777;
-    mode_t new_mode = (octal != (mode_t)-1) ? octal : old_mode;
-
-    if (octal == (mode_t)-1) {
-        /* Symbolic mode: compute new_mode from old_mode */
-        if (parse_symbolic(mode_str, &new_mode) != 0) {
-            fprintf(stderr, "chmod: invalid mode: '%s'\n", mode_str);
+    if (fd >= 0) {
+        if (fstat(fd, &st) != 0) {
+            fprintf(stderr, "chmod: cannot stat '%s': %s\n", path, strerror(errno));
             close(fd);
             return 1;
         }
-    }
 
-    if (fchmod(fd, new_mode) != 0) {
-        fprintf(stderr, "chmod: changing permissions of '%s': %s\n",
-                path, strerror(errno));
+        old_mode = st.st_mode & 07777;
+        new_mode = (octal != (mode_t)-1) ? octal : old_mode;
+
+        if (octal == (mode_t)-1) {
+            if (parse_symbolic(mode_str, &new_mode) != 0) {
+                fprintf(stderr, "chmod: invalid mode: '%s'\n", mode_str);
+                close(fd);
+                return 1;
+            }
+        }
+
+        if (fchmod(fd, new_mode) != 0) {
+            fprintf(stderr, "chmod: changing permissions of '%s': %s\n",
+                    path, strerror(errno));
+            close(fd);
+            return 1;
+        }
         close(fd);
-        return 1;
+    } else {
+        if (errno != EACCES) {
+            fprintf(stderr, "chmod: cannot open '%s': %s\n", path, strerror(errno));
+            return 1;
+        }
+
+        /* EACCES fallback: use path-based stat + chmod */
+        if (stat(path, &st) != 0) {
+            fprintf(stderr, "chmod: cannot stat '%s': %s\n", path, strerror(errno));
+            return 1;
+        }
+
+        old_mode = st.st_mode & 07777;
+        new_mode = (octal != (mode_t)-1) ? octal : old_mode;
+
+        if (octal == (mode_t)-1) {
+            if (parse_symbolic(mode_str, &new_mode) != 0) {
+                fprintf(stderr, "chmod: invalid mode: '%s'\n", mode_str);
+                return 1;
+            }
+        }
+
+        if (chmod(path, new_mode) != 0) {
+            fprintf(stderr, "chmod: changing permissions of '%s': %s\n",
+                    path, strerror(errno));
+            return 1;
+        }
     }
-    close(fd);
 
     if (flag_verbose || (flag_changes && old_mode != new_mode)) {
         if (old_mode != new_mode)

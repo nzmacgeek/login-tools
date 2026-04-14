@@ -6,7 +6,6 @@ Usage: chmod [-R] [-v] [-c] MODE FILE...
 from __future__ import annotations
 
 import argparse
-import os
 import stat
 import sys
 from pathlib import Path
@@ -66,14 +65,29 @@ def _apply_clause(current: int, clause: str) -> int:
         else:
             raise ValueError(f'invalid permission character: {c!r}')
 
+    # Special bits (SUID, SGID, SVTX) are outside the 0o777 'who' mask and
+    # must be handled separately so they are not accidentally cleared.
+    # Mapping: u → SUID, g → SGID, o/a → SVTX (traditional convention)
+    if not who_chars or 'a' in who_chars:
+        special_who = stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX
+    else:
+        special_who = 0
+        if 'u' in who_chars:
+            special_who |= stat.S_ISUID
+        if 'g' in who_chars:
+            special_who |= stat.S_ISGID
+        if 'o' in who_chars:
+            special_who |= stat.S_ISVTX
+    special_masked = perm_bits & special_who
+
     masked = perm_bits & who_bits
 
     if op == '+':
-        return current | masked
+        return current | masked | special_masked
     elif op == '-':
-        return current & ~masked
+        return current & ~(masked | special_masked)
     else:  # '='
-        return (current & ~who_bits) | masked
+        return (current & ~(who_bits | special_who)) | masked | special_masked
 
 
 def _apply_symbolic_mode(current: int, spec: str) -> int:
@@ -115,7 +129,7 @@ def _chmod_path(path: Path, mode_str: str, verbose: bool, changes: bool) -> int:
 
 def _chmod_recursive(path: Path, mode_str: str, verbose: bool, changes: bool) -> int:
     rc = _chmod_path(path, mode_str, verbose, changes)
-    if path.is_dir():
+    if not path.is_symlink() and path.is_dir():
         for child in path.iterdir():
             rc |= _chmod_recursive(child, mode_str, verbose, changes)
     return rc

@@ -6,9 +6,13 @@ LDFLAGS = -lcrypt
 # where the dynamic linker is not yet available).
 #   make STATIC=1
 #   make CC=x86_64-linux-musl-gcc STATIC=1
+#
+# -static belongs only in the link step, not the compile step, to avoid
+# "option '-static' is valid for the driver but not for C" warnings.
+LDFLAGS_SIMPLE =
 ifeq ($(STATIC),1)
-CFLAGS  += -static
-LDFLAGS += -static
+LDFLAGS        += -static
+LDFLAGS_SIMPLE += -static
 endif
 
 LIBDIR  = src/lib
@@ -55,7 +59,7 @@ $(addprefix $(SBINDIR)/, $(TOOLS_AUTH_SBIN)): $(SBINDIR)/%: $(SRCDIR)/%.o $(LIB_
 # Simple POSIX tools: link only their own object, no libauth, no -lcrypt.
 # Compatible with musl libc and suitable for static early-boot images.
 $(addprefix $(BINDIR)/, $(TOOLS_SIMPLE_BIN)): $(BINDIR)/%: $(SRCDIR)/%.o
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS_SIMPLE)
 
 # Generic compile rule
 %.o: %.c

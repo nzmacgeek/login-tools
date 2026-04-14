@@ -17,12 +17,16 @@ from login_tools.privilege import require_root
 def _resolve_group(group_str: str) -> int:
     """
     Resolve a group name or numeric GID string to an integer GID.
-    Raises ValueError for unknown group names.
+    Raises ValueError for unknown group names or invalid (negative) IDs.
     """
     try:
-        return int(group_str)
+        gid = int(group_str)
     except ValueError:
         pass
+    else:
+        if gid < 0:
+            raise ValueError(f'invalid group: {group_str!r}')
+        return gid
     gdb = GroupDb()
     entry = gdb.get_by_name(group_str)
     if entry is None:
@@ -33,9 +37,9 @@ def _resolve_group(group_str: str) -> int:
 def _chgrp_path(path: Path, gid: int, verbose: bool, changes: bool) -> int:
     """Apply chgrp to a single path. Returns 0 on success, 1 on error."""
     try:
-        st = path.stat()
+        st = path.lstat()
         old_gid = st.st_gid
-        os.chown(path, -1, gid)
+        os.lchown(path, -1, gid)
         if verbose or (changes and old_gid != gid):
             if old_gid != gid:
                 print(f"changed group of '{path}' from {old_gid} to {gid}")
@@ -49,7 +53,7 @@ def _chgrp_path(path: Path, gid: int, verbose: bool, changes: bool) -> int:
 
 def _chgrp_recursive(path: Path, gid: int, verbose: bool, changes: bool) -> int:
     rc = _chgrp_path(path, gid, verbose, changes)
-    if path.is_dir():
+    if not path.is_symlink() and path.is_dir():
         for child in path.iterdir():
             rc |= _chgrp_recursive(child, gid, verbose, changes)
     return rc

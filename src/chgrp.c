@@ -28,8 +28,13 @@ static int flag_changes   = 0;
 static int resolve_group(const char *spec, gid_t *gid)
 {
     char *end;
+    errno = 0;
     long v = strtol(spec, &end, 10);
-    if (*end == '\0') {
+    if (end != spec && *end == '\0') {
+        if (errno == ERANGE || v < 0 || (long)(gid_t)v != v) {
+            fprintf(stderr, "chgrp: invalid group: '%s'\n", spec);
+            return 1;
+        }
         *gid = (gid_t)v;
         return 0;
     }
@@ -111,7 +116,7 @@ static void usage(const char *prog)
 
 int main(int argc, char *argv[])
 {
-    if (getuid() != 0) {
+    if (geteuid() != 0) {
         fprintf(stderr, "chgrp: must be run as root.\n");
         exit(1);
     }

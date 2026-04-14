@@ -1,7 +1,6 @@
 """Tests for CLI tools"""
 from __future__ import annotations
 
-import os
 import sys
 import pytest
 
@@ -338,7 +337,7 @@ class TestChown:
         target = tmp_path / 'testfile.txt'
         target.write_text('data')
         calls = []
-        monkeypatch.setattr('os.chown', lambda p, u, g: calls.append((u, g)))
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((u, g)))
 
         from login_tools.cli.chown import main
         sys.argv = ['chown', '42:84', str(target)]
@@ -351,7 +350,7 @@ class TestChown:
         target = tmp_path / 'testfile.txt'
         target.write_text('data')
         calls = []
-        monkeypatch.setattr('os.chown', lambda p, u, g: calls.append((u, g)))
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((u, g)))
 
         from login_tools.cli.chown import main
         sys.argv = ['chown', 'alice', str(target)]
@@ -394,7 +393,7 @@ class TestChgrp:
         target = tmp_path / 'testfile.txt'
         target.write_text('data')
         calls = []
-        monkeypatch.setattr('os.chown', lambda p, u, g: calls.append((u, g)))
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((u, g)))
 
         from login_tools.cli.chgrp import main
         sys.argv = ['chgrp', '99', str(target)]
@@ -407,7 +406,7 @@ class TestChgrp:
         target = tmp_path / 'testfile.txt'
         target.write_text('data')
         calls = []
-        monkeypatch.setattr('os.chown', lambda p, u, g: calls.append((u, g)))
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((u, g)))
 
         from login_tools.cli.chgrp import main
         sys.argv = ['chgrp', 'alice', str(target)]
@@ -433,7 +432,7 @@ class TestChgrp:
         f = d / 'file.txt'
         f.write_text('data')
         calls = []
-        monkeypatch.setattr('os.chown', lambda p, u, g: calls.append((str(p), u, g)))
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((str(p), u, g)))
 
         from login_tools.cli.chgrp import main
         sys.argv = ['chgrp', '-R', '99', str(d)]

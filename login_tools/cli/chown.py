@@ -25,6 +25,8 @@ def _resolve_owner(spec: str) -> tuple[int, int]:
     """
     if ':' in spec:
         owner_str, group_str = spec.split(':', 1)
+        if not owner_str and not group_str:
+            raise ValueError("invalid spec: ':'")
     else:
         owner_str = spec
         group_str = ''
@@ -44,6 +46,9 @@ def _resolve_owner(spec: str) -> tuple[int, int]:
             # When no group is specified, also change to the user's primary group
             if not group_str:
                 gid = entry.gid
+        else:
+            if uid < 0:
+                raise ValueError(f'invalid user: {owner_str!r}')
 
     if group_str:
         try:
@@ -54,6 +59,9 @@ def _resolve_owner(spec: str) -> tuple[int, int]:
             if gentry is None:
                 raise ValueError(f'invalid group: {group_str!r}')
             gid = gentry.gid
+        else:
+            if gid < 0:
+                raise ValueError(f'invalid group: {group_str!r}')
 
     return uid, gid
 
@@ -61,10 +69,10 @@ def _resolve_owner(spec: str) -> tuple[int, int]:
 def _chown_path(path: Path, uid: int, gid: int, verbose: bool, changes: bool) -> int:
     """Apply chown to a single path. Returns 0 on success, 1 on error."""
     try:
-        st = path.stat()
+        st = path.lstat()
         old_uid = st.st_uid
         old_gid = st.st_gid
-        os.chown(path, uid, gid)
+        os.lchown(path, uid, gid)
         if verbose or changes:
             new_uid = uid if uid != -1 else old_uid
             new_gid = gid if gid != -1 else old_gid
@@ -83,6 +91,8 @@ def _chown_path(path: Path, uid: int, gid: int, verbose: bool, changes: bool) ->
 
 def _chown_recursive(path: Path, uid: int, gid: int, verbose: bool, changes: bool) -> int:
     rc = _chown_path(path, uid, gid, verbose, changes)
+    if path.is_symlink():
+        return rc
     if path.is_dir():
         for child in path.iterdir():
             rc |= _chown_recursive(child, uid, gid, verbose, changes)
