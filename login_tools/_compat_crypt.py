@@ -101,12 +101,15 @@ def _sha512_crypt_pure(password: str, salt_or_hash: str) -> str:
     # Steps 4-8: Compute digest B = SHA512(password + salt + password)
     digest_b = hashlib.sha512(pw_bytes + salt_bytes + pw_bytes).digest()
 
-    # Compute digest A: password + salt + bit-processed digest_b
+    # Steps 1-11: Compute digest A
     ctx_a = hashlib.sha512()
-    ctx_a.update(pw_bytes)    # add password
-    ctx_a.update(salt_bytes)  # add salt
-    # For each bit of pw_len (LSB→MSB): bit=1 → add full digest_b; bit=0 → add password
+    ctx_a.update(pw_bytes)    # step 2: add password
+    ctx_a.update(salt_bytes)  # step 3: add salt
+    # Step 9: add pw_len bytes taken from digest_b (cycling)
     pw_len = len(pw_bytes)
+    full, rem = divmod(pw_len, 64)
+    ctx_a.update(digest_b * full + digest_b[:rem])
+    # Step 10: for each bit of pw_len (LSB→MSB): bit=1 → add digest_b; bit=0 → add password
     n = pw_len
     while n > 0:
         if n & 1:
