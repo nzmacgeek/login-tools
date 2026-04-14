@@ -1,6 +1,6 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -O2 -D_GNU_SOURCE -Isrc -Wno-unused-result
-LDFLAGS = -lcrypt
+CFLAGS  = -Wall -Wextra -O2 -D_GNU_SOURCE -Isrc -Wno-unused-result -m32
+LDFLAGS = -lcrypt -m32
 
 # Set STATIC=1 to build static binaries (required for musl early-boot systems
 # where the dynamic linker is not yet available).
