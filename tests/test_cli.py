@@ -216,3 +216,229 @@ class TestUserlock:
             main()
         assert exc.value.code == 0
         assert fl.failure_count(LockoutPolicy()) == 0
+
+
+class TestChmod:
+    def test_octal_mode_change(self, blueyos_root, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('hello')
+        target.chmod(0o644)
+
+        from login_tools.cli.chmod import main
+        sys.argv = ['chmod', '755', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert (target.stat().st_mode & 0o777) == 0o755
+
+    def test_symbolic_mode_add(self, blueyos_root, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('hello')
+        target.chmod(0o644)
+
+        from login_tools.cli.chmod import main
+        sys.argv = ['chmod', 'u+x', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert (target.stat().st_mode & 0o100) != 0  # user execute bit set
+
+    def test_symbolic_mode_remove(self, blueyos_root, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('hello')
+        target.chmod(0o644)
+
+        from login_tools.cli.chmod import main
+        sys.argv = ['chmod', 'go-r', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        mode = target.stat().st_mode & 0o777
+        assert (mode & 0o044) == 0  # group and other read bits cleared
+
+    def test_symbolic_mode_assign(self, blueyos_root, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('hello')
+        target.chmod(0o777)
+
+        from login_tools.cli.chmod import main
+        sys.argv = ['chmod', 'a=r', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert (target.stat().st_mode & 0o777) == 0o444
+
+    def test_recursive(self, blueyos_root, tmp_path):
+        d = tmp_path / 'dir'
+        d.mkdir()
+        f = d / 'file.txt'
+        f.write_text('data')
+        d.chmod(0o755)
+        f.chmod(0o644)
+
+        from login_tools.cli.chmod import main
+        sys.argv = ['chmod', '-R', '700', str(d)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert (d.stat().st_mode & 0o777) == 0o700
+        assert (f.stat().st_mode & 0o777) == 0o700
+
+    def test_missing_file_returns_error(self, blueyos_root, tmp_path):
+        from login_tools.cli.chmod import main
+        sys.argv = ['chmod', '755', str(tmp_path / 'nonexistent')]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+    def test_verbose_output(self, blueyos_root, tmp_path, capsys):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('hello')
+        target.chmod(0o644)
+
+        from login_tools.cli.chmod import main
+        sys.argv = ['chmod', '-v', '755', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert f"mode of '{target}' changed from 0644 to 0755" in out
+
+
+class TestChown:
+    def test_unknown_user_exits_with_error(self, blueyos_root, as_root, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+
+        from login_tools.cli.chown import main
+        sys.argv = ['chown', 'nobody_unknown_user', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+    def test_unknown_group_exits_with_error(self, blueyos_root, as_root, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+
+        from login_tools.cli.chown import main
+        sys.argv = ['chown', 'root:nosuchgroup', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+    def test_missing_file_returns_error(self, blueyos_root, as_root, tmp_path):
+        from login_tools.cli.chown import main
+        sys.argv = ['chown', 'root', str(tmp_path / 'nonexistent')]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+    def test_numeric_uid_gid(self, blueyos_root, as_root, tmp_path, monkeypatch):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+        calls = []
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((u, g)))
+
+        from login_tools.cli.chown import main
+        sys.argv = ['chown', '42:84', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert calls == [(42, 84)]
+
+    def test_username_resolved_to_uid(self, blueyos_root, as_root, tmp_path, monkeypatch):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+        calls = []
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((u, g)))
+
+        from login_tools.cli.chown import main
+        sys.argv = ['chown', 'alice', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        # alice is UID 1000, primary GID 1000 (from fixture)
+        assert calls[0][0] == 1000
+
+    def test_requires_root(self, blueyos_root, as_alice, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+
+        from login_tools.cli.chown import main
+        sys.argv = ['chown', '0', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+
+class TestChgrp:
+    def test_unknown_group_exits_with_error(self, blueyos_root, as_root, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+
+        from login_tools.cli.chgrp import main
+        sys.argv = ['chgrp', 'nosuchgroup', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+    def test_missing_file_returns_error(self, blueyos_root, as_root, tmp_path):
+        from login_tools.cli.chgrp import main
+        sys.argv = ['chgrp', '0', str(tmp_path / 'nonexistent')]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+    def test_numeric_gid(self, blueyos_root, as_root, tmp_path, monkeypatch):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+        calls = []
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((u, g)))
+
+        from login_tools.cli.chgrp import main
+        sys.argv = ['chgrp', '99', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert calls == [(-1, 99)]
+
+    def test_group_name_resolved_to_gid(self, blueyos_root, as_root, tmp_path, monkeypatch):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+        calls = []
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((u, g)))
+
+        from login_tools.cli.chgrp import main
+        sys.argv = ['chgrp', 'alice', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        # alice group is GID 1000 (from fixture)
+        assert calls[0][1] == 1000
+
+    def test_requires_root(self, blueyos_root, as_alice, tmp_path):
+        target = tmp_path / 'testfile.txt'
+        target.write_text('data')
+
+        from login_tools.cli.chgrp import main
+        sys.argv = ['chgrp', '0', str(target)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+    def test_recursive(self, blueyos_root, as_root, tmp_path, monkeypatch):
+        d = tmp_path / 'dir'
+        d.mkdir()
+        f = d / 'file.txt'
+        f.write_text('data')
+        calls = []
+        monkeypatch.setattr('os.lchown', lambda p, u, g: calls.append((str(p), u, g)))
+
+        from login_tools.cli.chgrp import main
+        sys.argv = ['chgrp', '-R', '99', str(d)]
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        # Both the directory and the file should have been chowned
+        assert len(calls) == 2
+        assert all(g == 99 for _, _, g in calls)

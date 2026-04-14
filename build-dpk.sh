@@ -83,7 +83,7 @@ manifest = {
     "conflicts":   [],
     "provides":    ["passwd", "login", "useradd", "userdel", "usermod",
                     "groupadd", "groupdel", "groupmod", "chsh", "userlock",
-                    "setup-root"],
+                    "setup-root", "chmod", "chown", "chgrp"],
     "files":       files,
     "scripts": {
         "postinst": postinst,
