@@ -9,7 +9,7 @@
 set -euo pipefail
 
 VERSION="${1:-1.0.0}"
-ARCH="$(uname -m)"
+ARCH="i386"
 PKG_NAME="login-tools"
 OUT_FILE="${PKG_NAME}-${VERSION}-${ARCH}.dpk"
 
