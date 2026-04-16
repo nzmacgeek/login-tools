@@ -25,6 +25,10 @@ chmod u+s pkg/payload/usr/bin/passwd \
            pkg/payload/usr/bin/login  \
            pkg/payload/usr/bin/chsh
 
+# Ensure matey-compatible login path exists in payload.
+mkdir -p pkg/payload/sbin
+ln -sfn /usr/bin/login pkg/payload/sbin/login
+
 echo "==> Reading lifecycle scripts..."
 POSTINST="$(cat pkg/meta/postinst)"
 PRERM="$(cat pkg/meta/prerm)"
