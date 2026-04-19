@@ -18,7 +18,14 @@ cd "$SCRIPT_DIR"
 
 echo "==> Building binaries..."
 make clean
-make
+make_args=()
+if [ -n "${MUSL_PREFIX:-}" ]; then
+    make_args+=("MUSL_PREFIX=${MUSL_PREFIX}")
+fi
+if [ -n "${CC:-}" ]; then
+    make_args+=("CC=${CC}")
+fi
+make "${make_args[@]}"
 
 echo "==> Setting permissions on setuid binaries..."
 chmod u+s pkg/payload/usr/bin/passwd \

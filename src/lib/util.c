@@ -100,10 +100,10 @@ int read_password(const char *prompt, char *buf, size_t buflen)
 
     if (!line) return -1;
 
-    /* Strip trailing newline */
+    /* Strip trailing CR/LF */
     size_t len = strlen(buf);
-    if (len > 0 && buf[len - 1] == '\n')
-        buf[len - 1] = '\0';
+    while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
+        buf[--len] = '\0';
 
     return 0;
 }
